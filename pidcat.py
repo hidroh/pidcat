@@ -29,36 +29,20 @@ from subprocess import PIPE
 
 __version__ = '2.0.0'
 
-LOG_LEVELS = 'VDIWEF'
-LOG_LEVELS_MAP = dict([(LOG_LEVELS[i], i) for i in range(len(LOG_LEVELS))])
 parser = argparse.ArgumentParser(description='Filter logcat by package name')
-parser.add_argument('package', nargs='*', help='Application package name(s)')
+parser.add_argument('adb', nargs='*', help='adb argument(s)')
+parser.add_argument('-v', '--version', action='version', version='%(prog)s ' + __version__, help='Print the version number and exit')
 parser.add_argument('-w', '--tag-width', metavar='N', dest='tag_width', type=int, default=23, help='Width of log tag')
-parser.add_argument('-l', '--min-level', dest='min_level', type=str, choices=LOG_LEVELS+LOG_LEVELS.lower(), default='V', help='Minimum level to be displayed')
 parser.add_argument('--color-gc', dest='color_gc', action='store_true', help='Color garbage collection')
 parser.add_argument('--always-display-tags', dest='always_tags', action='store_true',help='Always display the tag name')
 parser.add_argument('--current', dest='current_app', action='store_true',help='Filter logcat by current running app')
-parser.add_argument('-s', '--serial', dest='device_serial', help='Device serial number (adb -s option)')
-parser.add_argument('-d', '--device', dest='use_device', action='store_true', help='Use first device for log input (adb -d option)')
-parser.add_argument('-e', '--emulator', dest='use_emulator', action='store_true', help='Use first emulator for log input (adb -e option)')
-parser.add_argument('-c', '--clear', dest='clear_logcat', action='store_true', help='Clear the entire log before running')
-parser.add_argument('-t', '--tag', dest='tag', action='append', help='Filter output by specified tag(s)')
-parser.add_argument('-i', '--ignore-tag', dest='ignored_tag', action='append', help='Filter output by ignoring specified tag(s)')
-parser.add_argument('-v', '--version', action='version', version='%(prog)s ' + __version__, help='Print the version number and exit')
-parser.add_argument('-a', '--all', dest='all', action='store_true', default=False, help='Print all log messages')
+parser.add_argument('--package', dest='package', action='append', help='Application package name(s)')
 
 args = parser.parse_args()
-min_level = LOG_LEVELS_MAP[args.min_level.upper()]
 
-package = args.package
+package = args.package or []
 
 base_adb_command = ['adb']
-if args.device_serial:
-  base_adb_command.extend(['-s', args.device_serial])
-if args.use_device:
-  base_adb_command.append('-d')
-if args.use_emulator:
-  base_adb_command.append('-e')
 
 if args.current_app:
   system_dump_command = base_adb_command + ["shell", "dumpsys", "activity", "activities"]
@@ -66,8 +50,7 @@ if args.current_app:
   running_package_name = re.search(".*TaskRecord.*A[= ]([^ ^}]*)", system_dump).group(1)
   package.append(running_package_name)
 
-if len(package) == 0:
-  args.all = True
+args.all = len(package) == 0
 
 # Store the names of packages for which to match all processes.
 catchall_package = filter(lambda package: package.find(":") == -1, package)
@@ -178,15 +161,7 @@ BACKTRACE_LINE = re.compile(r'^#(.*?)pc\s(.*?)$')
 adb_command = base_adb_command[:]
 adb_command.append('logcat')
 adb_command.extend(['-v', 'brief'])
-
-# Clear log before starting logcat
-if args.clear_logcat:
-  adb_clear_command = list(adb_command)
-  adb_clear_command.append('-c')
-  adb_clear = subprocess.Popen(adb_clear_command)
-
-  while adb_clear.poll() is None:
-    pass
+adb_command.extend(args.adb)
 
 # This is a ducktype of the subprocess.Popen object
 class FakeStdinProcess():
@@ -323,12 +298,6 @@ while adb.poll() is None:
       owner = app_pid
 
   if not args.all and owner not in pids:
-    continue
-  if level in LOG_LEVELS_MAP and LOG_LEVELS_MAP[level] < min_level:
-    continue
-  if args.ignored_tag and tag_in_tags_regex(tag, args.ignored_tag):
-    continue
-  if args.tag and not tag_in_tags_regex(tag, args.tag):
     continue
 
   linebuf = ''
