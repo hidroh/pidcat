@@ -31,6 +31,9 @@ __version__ = '2.0.0'
 
 parser = argparse.ArgumentParser(description='Filter logcat by package name')
 parser.add_argument('adb', nargs='*', help='adb argument(s)')
+parser.add_argument('-s', '--serial', dest='device_serial', help='Device serial number (adb -s option)')
+parser.add_argument('-d', '--device', dest='use_device', action='store_true', help='Use first device for log input (adb -d option)')
+parser.add_argument('-e', '--emulator', dest='use_emulator', action='store_true', help='Use first emulator for log input (adb -e option)')
 parser.add_argument('-v', '--version', action='version', version='%(prog)s ' + __version__, help='Print the version number and exit')
 parser.add_argument('-w', '--tag-width', metavar='N', dest='tag_width', type=int, default=23, help='Width of log tag')
 parser.add_argument('--color-gc', dest='color_gc', action='store_true', help='Color garbage collection')
@@ -39,10 +42,20 @@ parser.add_argument('--current', dest='current_app', action='store_true',help='F
 parser.add_argument('--package', dest='package', action='append', help='Application package name(s)')
 
 args = parser.parse_args()
-
 package = args.package or []
 
 base_adb_command = ['adb']
+if args.device_serial:
+  base_adb_command.extend(['-s', args.device_serial])
+if args.use_device:
+  base_adb_command.append('-d')
+if args.use_emulator:
+  base_adb_command.append('-e')
+
+device_check_command = base_adb_command + ["shell", "exit"]
+device_check = subprocess.Popen(device_check_command, stdout=PIPE, stderr=PIPE).communicate()
+if device_check[1]:
+  exit(device_check[1])
 
 if args.current_app:
   system_dump_command = base_adb_command + ["shell", "dumpsys", "activity", "activities"]
